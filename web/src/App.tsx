@@ -8,6 +8,7 @@ import HomePage from './pages/HomePage';
 import MemberPage from './pages/MemberPage';
 import ProblemPage from './pages/ProblemPage';
 import WeeklyPage from './pages/WeeklyPage';
+import LabPage from './pages/LabPage';
 
 export default function App() {
   const { dark, toggle } = useTheme();
@@ -59,6 +60,7 @@ export default function App() {
           <Route path="member/:id" element={<MemberPage />} />
           <Route path="problem/:memberId/:week/:problemName" element={<ProblemPage />} />
           <Route path="weekly/:week" element={<WeeklyPage />} />
+          <Route path="lab" element={<LabPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

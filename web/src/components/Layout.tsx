@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, Outlet } from 'react-router-dom';
+import { FlaskConical } from 'lucide-react';
 import Sidebar from './Sidebar';
 import SearchBar from './SearchBar';
 import ThemeToggle from './ThemeToggle';
@@ -43,6 +44,15 @@ export default function Layout({ members, problems, weeks, activities, dark, tog
 
         {/* 다크모드 토글 */}
         <ThemeToggle dark={dark} toggle={toggleTheme} />
+
+        {/* 실험실 */}
+        <Link
+          to="/lab"
+          className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+          title="실험실"
+        >
+          <FlaskConical className="w-5 h-5" />
+        </Link>
       </header>
 
       {/* 사이드바 */}

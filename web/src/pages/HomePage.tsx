@@ -1,6 +1,7 @@
 import { useOutletContext, Link } from 'react-router-dom';
 import MemberCard from '../components/MemberCard';
 import StatsChart from '../components/StatsChart';
+import SourceBadge from '../components/SourceBadge';
 import { sortedMemberEntries } from '../services/github';
 import type { Members, Problem, Activities } from '../types';
 
@@ -67,13 +68,7 @@ export default function HomePage() {
                 to={`/problem/${p.member}/${p.week}/${p.name}`}
                 className="flex items-center gap-3 px-5 py-3 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
               >
-                <span className={`text-xs px-2 py-0.5 rounded font-medium ${
-                  p.source === 'swea' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' :
-                  p.source === 'boj' ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' :
-                  'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-400'
-                }`}>
-                  {p.source.toUpperCase()}
-                </span>
+                <SourceBadge source={p.source} />
                 <span className="text-sm text-slate-900 dark:text-slate-100 font-medium">{p.name}</span>
                 <span className="text-xs text-slate-400 ml-auto">{members[p.member]?.name} · {p.week}</span>
               </Link>

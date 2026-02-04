@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useOutletContext, Link } from 'react-router-dom';
 import CodeViewer from '../components/CodeViewer';
 import MarkdownViewer from '../components/MarkdownViewer';
-import { fetchFileContent, parseSourceFromCode } from '../services/github';
+import SourceBadge from '../components/SourceBadge';
+import { ExternalLink, Users } from 'lucide-react';
+import { fetchFileContent, parseSourceFromCode, getProblemUrl } from '../services/github';
 import type { Members, Problem } from '../types';
 
 interface Context {
@@ -70,21 +72,32 @@ export default function ProblemPage() {
     return <p className="text-slate-500 dark:text-slate-400">문제를 찾을 수 없습니다.</p>;
   }
 
-  const displaySource = resolvedSource || problem.source;
+  const displaySource = (resolvedSource || problem.source) as 'swea' | 'boj' | 'etc';
+  const problemUrl = getProblemUrl(problem.name, displaySource);
+
+  // 같은 문제를 푼 다른 팀원들
+  const otherSolutions = useMemo(
+    () => problems.filter((p) => p.name === problem.name && p.member !== memberId),
+    [problems, problem.name, memberId]
+  );
 
   return (
     <div className="space-y-6">
       {/* 메타 정보 */}
       <div>
         <div className="flex items-center gap-3 mb-2 flex-wrap">
-          <span className={`text-xs px-2 py-0.5 rounded font-medium ${
-            displaySource === 'swea' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' :
-            displaySource === 'boj' ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' :
-            'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-400'
-          }`}>
-            {displaySource.toUpperCase()}
-          </span>
+          <SourceBadge source={displaySource} />
           <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100">{problem.name}</h1>
+          {problemUrl && (
+            <a
+              href={problemUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+            >
+              문제 보기 <ExternalLink className="w-3 h-3" />
+            </a>
+          )}
         </div>
         <div className="flex items-center gap-3 text-sm text-slate-500 dark:text-slate-400">
           <Link to={`/member/${memberId}`} className="hover:text-indigo-600 dark:hover:text-indigo-400">
@@ -136,6 +149,37 @@ export default function ProblemPage() {
         </div>
       ) : (
         <p className="text-slate-500 dark:text-slate-400 text-sm">콘텐츠를 불러올 수 없습니다.</p>
+      )}
+
+      {/* 다른 풀이 */}
+      {otherSolutions.length > 0 && (
+        <div className="space-y-3">
+          <h2 className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
+            <Users className="w-4 h-4" />
+            다른 풀이 ({otherSolutions.length})
+          </h2>
+          <div className="flex flex-wrap gap-2">
+            {otherSolutions.map((sol) => {
+              const solMember = members[sol.member];
+              if (!solMember) return null;
+              return (
+                <Link
+                  key={sol.id}
+                  to={`/problem/${sol.member}/${sol.week}/${sol.name}`}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-600 transition-colors"
+                >
+                  <img
+                    src={`https://github.com/${solMember.github}.png?size=24`}
+                    alt={solMember.name}
+                    className="w-5 h-5 rounded-full"
+                  />
+                  <span className="text-sm text-slate-700 dark:text-slate-300">{solMember.name}</span>
+                  <span className="text-xs text-slate-400 dark:text-slate-500">{sol.week}</span>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
       )}
 
       {/* 이전/다음 */}

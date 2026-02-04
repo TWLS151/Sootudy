@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import type { Problem, Members } from '../types';
 
 interface StatsChartProps {
@@ -6,21 +7,27 @@ interface StatsChartProps {
 }
 
 export default function StatsChart({ problems, members }: StatsChartProps) {
-  // 팀원별 풀이 수
-  const memberCounts: { id: string; name: string; count: number }[] = [];
-  for (const [id, member] of Object.entries(members)) {
-    const count = problems.filter((p) => p.member === id).length;
-    if (count > 0) memberCounts.push({ id, name: member.name, count });
-  }
-  memberCounts.sort((a, b) => b.count - a.count);
-  const maxCount = Math.max(...memberCounts.map((m) => m.count), 1);
+  const memberCounts = useMemo(() => {
+    const counts: { id: string; name: string; count: number }[] = [];
+    for (const [id, member] of Object.entries(members)) {
+      const count = problems.filter((p) => p.member === id).length;
+      if (count > 0) counts.push({ id, name: member.name, count });
+    }
+    counts.sort((a, b) => b.count - a.count);
+    return counts;
+  }, [problems, members]);
 
-  // 출처별 분포
-  const sourceCounts = {
+  const maxCount = useMemo(
+    () => Math.max(...memberCounts.map((m) => m.count), 1),
+    [memberCounts]
+  );
+
+  const sourceCounts = useMemo(() => ({
     swea: problems.filter((p) => p.source === 'swea').length,
     boj: problems.filter((p) => p.source === 'boj').length,
     etc: problems.filter((p) => p.source === 'etc').length,
-  };
+  }), [problems]);
+
   const total = problems.length || 1;
 
   return (
