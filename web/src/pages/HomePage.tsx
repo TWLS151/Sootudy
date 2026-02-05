@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useOutletContext, Link } from 'react-router-dom';
-import { X, ExternalLink, Sparkles, Plus, Trash2 } from 'lucide-react';
+import { X, ExternalLink, Sparkles, Plus, Trash2, Upload } from 'lucide-react';
 import MemberCard from '../components/MemberCard';
 import StatsChart from '../components/StatsChart';
 import SourceBadge from '../components/SourceBadge';
@@ -268,42 +268,84 @@ export default function HomePage() {
           <div className="space-y-2">
             {dailyProblems.map((problem) => {
               const problemUrl = getProblemUrl(problem.problem_number, problem.source);
+              // 이 문제를 제출한 팀원 찾기
+              const problemName = `${problem.source}-${problem.problem_number}`;
+              const solvers = problems.filter((p) => (p.baseName || p.name) === problemName);
               return (
                 <div
                   key={problem.id}
-                  className="bg-white dark:bg-slate-800 rounded-lg p-4 border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-4"
+                  className="bg-white dark:bg-slate-800 rounded-lg p-4 border border-slate-200 dark:border-slate-700 space-y-3"
                 >
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <SourceBadge source={problem.source} />
-                    <div className="flex-1 min-w-0">
-                      <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100 truncate">
-                        {problem.problem_title}
-                      </h3>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        {problem.source.toUpperCase()} {problem.problem_number}
-                      </p>
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      <SourceBadge source={problem.source} />
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100 truncate">
+                          {problem.problem_title}
+                        </h3>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          {problem.source.toUpperCase()} {problem.problem_number}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {problemUrl && (
+                        <a
+                          href={problemUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium rounded-lg transition-colors"
+                        >
+                          문제 보기
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                      )}
+                      {problem.source !== 'etc' && (
+                        <Link
+                          to={`/submit?source=${problem.source}&number=${problem.problem_number}`}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-medium rounded-lg transition-colors"
+                        >
+                          <Upload className="w-3.5 h-3.5" />
+                          제출
+                        </Link>
+                      )}
+                      <button
+                        onClick={() => handleDeleteProblem(problem.id)}
+                        className="p-1.5 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 rounded transition-colors"
+                        aria-label="삭제"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {problemUrl && (
-                      <a
-                        href={problemUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium rounded-lg transition-colors"
-                      >
-                        문제 보기
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      </a>
-                    )}
-                    <button
-                      onClick={() => handleDeleteProblem(problem.id)}
-                      className="p-1.5 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 rounded transition-colors"
-                      aria-label="삭제"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
+
+                  {/* 제출한 팀원 */}
+                  {solvers.length > 0 && (
+                    <div className="flex items-center gap-2 pt-1 border-t border-slate-100 dark:border-slate-700">
+                      <span className="text-xs text-slate-500 dark:text-slate-400 shrink-0">제출:</span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {solvers.map((sol) => {
+                          const solMember = members[sol.member];
+                          if (!solMember) return null;
+                          return (
+                            <Link
+                              key={sol.id}
+                              to={`/problem/${sol.member}/${sol.week}/${sol.name}`}
+                              className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-slate-50 dark:bg-slate-700 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors"
+                              title={`${solMember.name} (${sol.week})`}
+                            >
+                              <img
+                                src={`https://github.com/${solMember.github}.png?size=20`}
+                                alt={solMember.name}
+                                className="w-4 h-4 rounded-full"
+                              />
+                              <span className="text-xs text-slate-700 dark:text-slate-300">{solMember.name}</span>
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}

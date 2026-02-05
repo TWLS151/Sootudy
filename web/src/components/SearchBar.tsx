@@ -17,7 +17,7 @@ export default function SearchBar({ problems, members }: SearchBarProps) {
   const navigate = useNavigate();
 
   const results = query.trim()
-    ? problems.filter((p) => p.name.toLowerCase().includes(query.toLowerCase())).slice(0, 8)
+    ? problems.filter((p) => p.name.toLowerCase().includes(query.toLowerCase()) || (p.baseName || '').toLowerCase().includes(query.toLowerCase())).slice(0, 8)
     : [];
 
   const selectResult = useCallback((p: Problem) => {

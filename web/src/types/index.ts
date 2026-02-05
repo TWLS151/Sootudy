@@ -17,6 +17,8 @@ export interface Problem {
   hasNote: boolean;
   notePath?: string;
   difficulty?: string; // e.g., "D1", "D2" for SWEA, "골드", "실버" for BOJ, "미정" as default
+  version?: number;
+  baseName?: string;
 }
 
 export interface FileContent {

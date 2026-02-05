@@ -30,12 +30,15 @@ export default function WeeklyPage() {
     const uniqueProblems = new Map<string, Problem>();
     weekProblems.forEach((p) => {
       if (!sourceFilter || p.source === sourceFilter) {
-        if (!uniqueProblems.has(p.name)) {
-          uniqueProblems.set(p.name, p);
+        const key = p.baseName || p.name;
+        if (!uniqueProblems.has(key)) {
+          uniqueProblems.set(key, p);
         }
       }
     });
-    return Array.from(uniqueProblems.values()).sort((a, b) => a.name.localeCompare(b.name));
+    return Array.from(uniqueProblems.values()).sort((a, b) =>
+      (a.baseName || a.name).localeCompare(b.baseName || b.name)
+    );
   }, [weekProblems, sourceFilter]);
 
   // 해당 주차에 참여한 멤버들
@@ -53,10 +56,14 @@ export default function WeeklyPage() {
   const solvedMatrix = useMemo(() => {
     const matrix = new Map<string, Map<string, Problem>>();
     weekProblems.forEach((p) => {
-      if (!matrix.has(p.name)) {
-        matrix.set(p.name, new Map());
+      const key = p.baseName || p.name;
+      if (!matrix.has(key)) {
+        matrix.set(key, new Map());
       }
-      matrix.get(p.name)!.set(p.member, p);
+      const existing = matrix.get(key)!.get(p.member);
+      if (!existing || (p.version || 0) > (existing.version || 0)) {
+        matrix.get(key)!.set(p.member, p);
+      }
     });
     return matrix;
   }, [weekProblems]);
@@ -247,18 +254,19 @@ export default function WeeklyPage() {
                 </tr>
               ) : (
                 filteredProblems.map((problem) => {
-                  const problemRow = solvedMatrix.get(problem.name);
+                  const baseKey = problem.baseName || problem.name;
+                  const problemRow = solvedMatrix.get(baseKey);
 
                   return (
                     <tr
-                      key={problem.name}
+                      key={baseKey}
                       className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors"
                     >
                       <td className="sticky left-0 z-10 bg-white dark:bg-slate-800 py-3 px-4 group-hover:bg-slate-50 dark:group-hover:bg-slate-900/50">
                         <div className="flex items-center gap-2">
                           <SourceBadge source={problem.source} />
                           <span className="text-slate-900 dark:text-slate-100 font-medium">
-                            {problem.name}
+                            {baseKey}
                           </span>
                         </div>
                       </td>
@@ -268,7 +276,7 @@ export default function WeeklyPage() {
                           <td key={memberId} className="text-center py-3 px-3">
                             {solved ? (
                               <Link
-                                to={`/problem/${memberId}/${currentWeek}/${problem.name}`}
+                                to={`/problem/${memberId}/${currentWeek}/${solved.name}`}
                                 className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors"
                               >
                                 <Check className="w-4 h-4" />

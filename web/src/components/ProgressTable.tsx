@@ -9,7 +9,7 @@ interface ProgressTableProps {
 
 export default function ProgressTable({ problems, members, week }: ProgressTableProps) {
   const weekProblems = problems.filter((p) => p.week === week);
-  const uniqueNames = [...new Set(weekProblems.map((p) => p.name))].sort();
+  const uniqueNames = [...new Set(weekProblems.map((p) => p.baseName || p.name))].sort();
   const memberIds = Object.keys(members).filter((id) =>
     weekProblems.some((p) => p.member === id)
   );
@@ -40,7 +40,7 @@ export default function ProgressTable({ problems, members, week }: ProgressTable
                 </Link>
               </td>
               {uniqueNames.map((name) => {
-                const problem = weekProblems.find((p) => p.member === id && p.name === name);
+                const problem = weekProblems.find((p) => p.member === id && (p.baseName || p.name) === name);
                 return (
                   <td key={name} className="text-center py-3 px-2">
                     {problem ? (

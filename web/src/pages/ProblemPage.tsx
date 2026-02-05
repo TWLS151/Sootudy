@@ -1,11 +1,12 @@
-import { useState, useEffect, useMemo } from 'react';
-import { useParams, useOutletContext, Link } from 'react-router-dom';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { useParams, useOutletContext, Link, useNavigate } from 'react-router-dom';
 import CodeViewer from '../components/CodeViewer';
 import MarkdownViewer from '../components/MarkdownViewer';
 import SourceBadge from '../components/SourceBadge';
 import Comments from '../components/Comments';
-import { ExternalLink, Users } from 'lucide-react';
+import { ExternalLink, Users, Pencil, Trash2, MoreVertical } from 'lucide-react';
 import { fetchFileContent, parseSourceFromCode, getProblemUrl } from '../services/github';
+import { supabase } from '../lib/supabase';
 import type { Members, Problem } from '../types';
 
 interface Context {
@@ -17,18 +18,84 @@ interface Context {
 export default function ProblemPage() {
   const { memberId, week, problemName } = useParams<{ memberId: string; week: string; problemName: string }>();
   const { members, problems, dark } = useOutletContext<Context>();
+  const navigate = useNavigate();
 
   const [code, setCode] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'code' | 'note'>('code');
   const [resolvedSource, setResolvedSource] = useState<string | null>(null);
+  const [currentMemberId, setCurrentMemberId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const problem = problems.find(
     (p) => p.member === memberId && p.week === week && p.name === problemName
   );
 
   const member = memberId ? members[memberId] : undefined;
+  const isOwner = currentMemberId === memberId;
+
+  // 현재 로그인한 유저의 memberId 찾기
+  useEffect(() => {
+    async function resolveMember() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const githubUsername = user.user_metadata?.user_name || user.user_metadata?.preferred_username;
+      if (!githubUsername) return;
+      for (const [id, m] of Object.entries(members)) {
+        if (m.github.toLowerCase() === githubUsername.toLowerCase()) {
+          setCurrentMemberId(id);
+          break;
+        }
+      }
+    }
+    if (Object.keys(members).length > 0) resolveMember();
+  }, [members]);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  async function handleDelete() {
+    if (!problem || !window.confirm('정말 이 코드를 삭제하시겠습니까?')) return;
+
+    setDeleting(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const res = await fetch('/api/delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ path: problem.path }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      try {
+        sessionStorage.removeItem('sootudy_tree');
+        sessionStorage.removeItem('sootudy_activity');
+      } catch { /* ignore */ }
+
+      navigate(`/member/${memberId}`);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '삭제에 실패했습니다.');
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   // 이전/다음 문제
   const memberProblems = problems.filter((p) => p.member === memberId);
@@ -76,11 +143,16 @@ export default function ProblemPage() {
   const displaySource = (resolvedSource || problem.source) as 'swea' | 'boj' | 'etc';
   const problemUrl = getProblemUrl(problem.name, displaySource);
 
-  // 같은 문제를 푼 다른 팀원들
-  const otherSolutions = useMemo(
-    () => problems.filter((p) => p.name === problem.name && p.member !== memberId),
-    [problems, problem.name, memberId]
-  );
+  // 같은 문제를 푼 다른 팀원들 + 같은 멤버의 다른 버전
+  const otherSolutions = useMemo(() => {
+    const currentBaseName = problem.baseName || problem.name;
+    return problems.filter((p) => {
+      const pBaseName = p.baseName || p.name;
+      if (pBaseName !== currentBaseName) return false;
+      if (p.id === problem.id) return false;
+      return true;
+    });
+  }, [problems, problem.baseName, problem.name, problem.id]);
 
   return (
     <div className="space-y-6">
@@ -108,6 +180,44 @@ export default function ProblemPage() {
           <Link to={`/weekly/${week}`} className="hover:text-indigo-600 dark:hover:text-indigo-400">
             {week}
           </Link>
+
+          {isOwner && (
+            <div className="relative" ref={menuRef}>
+              <button
+                onClick={() => setMenuOpen(!menuOpen)}
+                className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                aria-label="더보기"
+              >
+                <MoreVertical className="w-4 h-4 text-slate-400 dark:text-slate-500" />
+              </button>
+
+              {menuOpen && (
+                <div className="absolute right-0 top-8 z-10 w-32 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-lg py-1">
+                  <button
+                    onClick={() => {
+                      setMenuOpen(false);
+                      navigate(`/submit?edit=${memberId}/${week}/${problemName}`);
+                    }}
+                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                    수정
+                  </button>
+                  <button
+                    onClick={() => {
+                      setMenuOpen(false);
+                      handleDelete();
+                    }}
+                    disabled={deleting}
+                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    {deleting ? '삭제 중...' : '삭제'}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -167,6 +277,7 @@ export default function ProblemPage() {
                 {otherSolutions.map((sol) => {
                   const solMember = members[sol.member];
                   if (!solMember) return null;
+                  const isSameMember = sol.member === memberId;
                   return (
                     <Link
                       key={sol.id}
@@ -178,7 +289,9 @@ export default function ProblemPage() {
                         alt={solMember.name}
                         className="w-5 h-5 rounded-full"
                       />
-                      <span className="text-sm text-slate-700 dark:text-slate-300">{solMember.name}</span>
+                      <span className="text-sm text-slate-700 dark:text-slate-300">
+                        {isSameMember && sol.version ? `v${sol.version}` : solMember.name}
+                      </span>
                       <span className="text-xs text-slate-400 dark:text-slate-500">{sol.week}</span>
                     </Link>
                   );

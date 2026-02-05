@@ -18,6 +18,14 @@ export function parseSourceFromCode(code: string): 'swea' | 'boj' | 'etc' | null
   return 'etc';
 }
 
+export function parseVersionFromName(name: string): { baseName: string; version: number | undefined } {
+  const match = name.match(/^(.+)-v(\d+)$/);
+  if (match) {
+    return { baseName: match[1], version: parseInt(match[2], 10) };
+  }
+  return { baseName: name, version: undefined };
+}
+
 export function parseProblemsFromTree(tree: GitHubTreeItem[], members: Members): Problem[] {
   const memberIds = new Set(Object.keys(members));
   const problems: Problem[] = [];
@@ -43,6 +51,7 @@ export function parseProblemsFromTree(tree: GitHubTreeItem[], members: Members):
     const name = filename.replace(/\.py$/, '');
     const basePath = item.path.replace(/\.py$/, '');
     const hasNote = mdFiles.has(basePath);
+    const { baseName, version } = parseVersionFromName(name);
 
     problems.push({
       id: `${memberId}/${week}/${name}`,
@@ -53,6 +62,8 @@ export function parseProblemsFromTree(tree: GitHubTreeItem[], members: Members):
       path: item.path,
       hasNote,
       notePath: hasNote ? `${basePath}.md` : undefined,
+      version,
+      baseName,
     });
   }
 
@@ -68,8 +79,9 @@ export function sortedMemberEntries(members: Members): [string, Members[string]]
 }
 
 export function getProblemUrl(name: string, source: 'swea' | 'boj' | 'etc'): string | null {
-  // 파일명에서 숫자 추출: "swea-1284" → "1284", "boj-2346" → "2346"
-  const match = name.match(/(\d+)/);
+  // 버전 접미사 제거 후 숫자 추출: "swea-1284-v2" → "1284"
+  const baseName = name.replace(/-v\d+$/, '');
+  const match = baseName.match(/(\d+)/);
   if (!match) return null;
   const num = match[1];
 

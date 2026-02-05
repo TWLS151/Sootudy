@@ -1,8 +1,9 @@
 import { useState, useMemo, useEffect } from 'react';
-import { useOutletContext, useNavigate } from 'react-router-dom';
-import { Upload, AlertCircle, CheckCircle, FileCode } from 'lucide-react';
+import { useOutletContext, useNavigate, useSearchParams } from 'react-router-dom';
+import { Upload, Pencil, AlertCircle, CheckCircle, FileCode } from 'lucide-react';
 import Editor from '@monaco-editor/react';
 import { supabase } from '../lib/supabase';
+import { fetchFileContent } from '../services/github';
 import type { Members, Problem, Activities } from '../types';
 
 interface Context {
@@ -29,17 +30,39 @@ function getCurrentWeek(): string {
 export default function SubmitPage() {
   const { members, dark } = useOutletContext<Context>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
-  const [source, setSource] = useState<'swea' | 'boj'>('swea');
-  const [problemNumber, setProblemNumber] = useState('');
+  // 편집 모드: /submit?edit=memberId/week/name
+  const editParam = searchParams.get('edit');
+  const isEditMode = !!editParam;
+
+  // 프리셋 모드: /submit?source=swea&number=6001
+  const presetSource = searchParams.get('source') as 'swea' | 'boj' | null;
+  const presetNumber = searchParams.get('number');
+
+  const editParts = useMemo(() => {
+    if (!editParam) return null;
+    const parts = editParam.split('/');
+    if (parts.length !== 3) return null;
+    const [eMemberId, eWeek, eName] = parts;
+    const match = eName.match(/^(swea|boj)-(\d+)(-v\d+)?$/);
+    if (!match) return null;
+    return { memberId: eMemberId, week: eWeek, source: match[1] as 'swea' | 'boj', problemNumber: match[2], fullName: eName };
+  }, [editParam]);
+
+  const [source, setSource] = useState<'swea' | 'boj'>(editParts?.source || presetSource || 'swea');
+  const [problemNumber, setProblemNumber] = useState(editParts?.problemNumber || presetNumber || '');
   const [code, setCode] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [memberId, setMemberId] = useState<string | null>(null);
   const [memberName, setMemberName] = useState<string>('');
+  const [loadingCode, setLoadingCode] = useState(isEditMode);
 
+  const editWeek = editParts?.week;
   const currentWeek = useMemo(() => getCurrentWeek(), []);
+  const displayWeek = editWeek || currentWeek;
 
   // 현재 로그인한 유저의 memberId 찾기
   useEffect(() => {
@@ -67,14 +90,36 @@ export default function SubmitPage() {
     }
   }, [members]);
 
+  // 편집 모드: 기존 코드 불러오기
+  useEffect(() => {
+    if (!isEditMode || !editParts) return;
+
+    async function loadExistingCode() {
+      try {
+        const path = `${editParts!.memberId}/${editParts!.week}/${editParts!.fullName}.py`;
+        const content = await fetchFileContent(path);
+        setCode(content);
+      } catch {
+        setError('기존 코드를 불러올 수 없습니다.');
+      } finally {
+        setLoadingCode(false);
+      }
+    }
+
+    loadExistingCode();
+  }, [isEditMode, editParts]);
+
   const filePath = useMemo(() => {
     if (!memberId || !problemNumber) return null;
-    return `${memberId}/${currentWeek}/${source}-${problemNumber}.py`;
-  }, [memberId, currentWeek, source, problemNumber]);
+    if (isEditMode && editParts) {
+      return `${editParts.memberId}/${editParts.week}/${editParts.fullName}.py`;
+    }
+    return `${memberId}/${displayWeek}/${source}-${problemNumber}-v?.py`;
+  }, [memberId, displayWeek, source, problemNumber, isEditMode, editParts]);
 
-  const canSubmit = code.trim().length > 0 && problemNumber.length > 0 && !submitting;
+  const canSubmit = code.trim().length > 0 && problemNumber.length > 0 && !submitting && !loadingCode;
 
-  async function handleSubmit(overwrite = false) {
+  async function handleSubmit() {
     setError(null);
     setSubmitting(true);
 
@@ -87,29 +132,29 @@ export default function SubmitPage() {
         return;
       }
 
+      const body: Record<string, unknown> = {
+        source,
+        problemNumber,
+        code,
+      };
+
+      if (isEditMode && editParts) {
+        body.editPath = `${editParts.memberId}/${editParts.week}/${editParts.fullName}.py`;
+        body.week = editParts.week;
+      }
+
       const res = await fetch('/api/submit', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({ source, problemNumber, code, overwrite }),
+        body: JSON.stringify(body),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
-        if (res.status === 409) {
-          const confirmOverwrite = window.confirm(
-            '이미 같은 파일이 존재합니다. 덮어쓰시겠습니까?',
-          );
-          if (confirmOverwrite) {
-            await handleSubmit(true);
-            return;
-          }
-          setSubmitting(false);
-          return;
-        }
         throw new Error(data.error || '제출에 실패했습니다.');
       }
 
@@ -141,14 +186,20 @@ export default function SubmitPage() {
       {/* 헤더 */}
       <div className="flex items-center gap-3">
         <div className="w-10 h-10 rounded-xl bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center">
-          <Upload className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+          {isEditMode ? (
+            <Pencil className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+          ) : (
+            <Upload className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+          )}
         </div>
         <div>
           <h1 className="text-xl font-bold text-slate-900 dark:text-white">
-            코드 제출
+            {isEditMode ? '코드 수정' : '코드 제출'}
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            코드를 붙여넣으면 GitHub에 자동으로 업로드됩니다
+            {isEditMode
+              ? '코드를 수정하면 GitHub에 자동으로 반영됩니다'
+              : '코드를 붙여넣으면 GitHub에 자동으로 업로드됩니다'}
           </p>
         </div>
       </div>
@@ -256,7 +307,7 @@ export default function SubmitPage() {
           </label>
           <div className="rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700">
             <Editor
-              height="500px"
+              height="300px"
               language="python"
               theme={dark ? 'vs-dark' : 'light'}
               value={code}
@@ -287,8 +338,8 @@ export default function SubmitPage() {
             disabled={!canSubmit}
             className="flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
           >
-            <Upload className="w-5 h-5" />
-            {submitting ? '제출 중...' : '제출하기'}
+            {isEditMode ? <Pencil className="w-5 h-5" /> : <Upload className="w-5 h-5" />}
+            {submitting ? (isEditMode ? '수정 중...' : '제출 중...') : (isEditMode ? '수정하기' : '제출하기')}
           </button>
           <button
             type="button"

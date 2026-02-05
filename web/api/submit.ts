@@ -98,7 +98,7 @@ export default async function handler(req: any, res: any) {
   }
 
   // --- Validate input ---
-  const { source, problemNumber, code, overwrite = false } = req.body || {};
+  const { source, problemNumber, code, week: customWeek, editPath } = req.body || {};
 
   if (!source || !problemNumber || !code) {
     return res
@@ -117,14 +117,85 @@ export default async function handler(req: any, res: any) {
     return res.status(400).json({ error: '코드를 입력해주세요.' });
   }
 
-  // --- Build path ---
-  const week = getCurrentWeek();
+  const week = customWeek || getCurrentWeek();
   const name = `${source}-${problemNumber}`;
-  const filePath = `${memberId}/${week}/${name}.py`;
 
-  // --- Check existing file ---
-  const checkRes = await fetch(
-    `https://api.github.com/repos/${OWNER}/${REPO}/contents/${filePath}`,
+  const author = {
+    name: members[memberId].github,
+    email: `${members[memberId].github}@users.noreply.github.com`,
+  };
+
+  // --- EDIT MODE: Update a specific versioned file ---
+  if (editPath && typeof editPath === 'string') {
+    if (!editPath.startsWith(`${memberId}/`)) {
+      return res.status(403).json({ error: '본인의 코드만 수정할 수 있습니다.' });
+    }
+
+    const checkRes = await fetch(
+      `https://api.github.com/repos/${OWNER}/${REPO}/contents/${editPath}`,
+      {
+        headers: {
+          Authorization: `token ${githubPat}`,
+          Accept: 'application/vnd.github.v3+json',
+          'User-Agent': 'Sootudy-Web',
+        },
+      },
+    );
+
+    if (!checkRes.ok) {
+      return res.status(404).json({ error: '수정할 파일을 찾을 수 없습니다.' });
+    }
+
+    const existing = await checkRes.json();
+    const content = Buffer.from(code, 'utf-8').toString('base64');
+    const pathParts = editPath.split('/');
+    const editFileName = pathParts[2]?.replace(/\.py$/, '') || name;
+    const commitMessage = `Update ${editFileName} by ${members[memberId].name}`;
+
+    const putRes = await fetch(
+      `https://api.github.com/repos/${OWNER}/${REPO}/contents/${editPath}`,
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `token ${githubPat}`,
+          Accept: 'application/vnd.github.v3+json',
+          'Content-Type': 'application/json',
+          'User-Agent': 'Sootudy-Web',
+        },
+        body: JSON.stringify({
+          message: commitMessage,
+          content,
+          sha: existing.sha,
+          author,
+          committer: author,
+        }),
+      },
+    );
+
+    if (!putRes.ok) {
+      const errData = await putRes.json().catch(() => ({}));
+      return res.status(500).json({
+        error: `GitHub API 오류: ${putRes.status}`,
+        details: errData.message,
+      });
+    }
+
+    const responseWeek = pathParts[1];
+    const responseName = pathParts[2].replace(/\.py$/, '');
+
+    return res.status(201).json({
+      success: true,
+      path: editPath,
+      memberId,
+      week: responseWeek,
+      name: responseName,
+    });
+  }
+
+  // --- NEW SUBMISSION: Auto-detect version ---
+  const dirPath = `${memberId}/${week}`;
+  const dirRes = await fetch(
+    `https://api.github.com/repos/${OWNER}/${REPO}/contents/${dirPath}`,
     {
       headers: {
         Authorization: `token ${githubPat}`,
@@ -134,31 +205,40 @@ export default async function handler(req: any, res: any) {
     },
   );
 
-  let existingSha: string | undefined;
-  if (checkRes.ok) {
-    if (!overwrite) {
-      return res.status(409).json({
-        error: '이미 같은 파일이 존재합니다.',
-        path: filePath,
-      });
+  let nextVersion = 1;
+
+  if (dirRes.ok) {
+    const dirFiles: Array<{ name: string }> = await dirRes.json();
+    const versionPattern = new RegExp(`^${name}-v(\\d+)\\.py$`);
+    const legacyName = `${name}.py`;
+
+    let maxVersion = 0;
+    let hasLegacy = false;
+
+    for (const file of dirFiles) {
+      const match = file.name.match(versionPattern);
+      if (match) {
+        const v = parseInt(match[1], 10);
+        if (v > maxVersion) maxVersion = v;
+      }
+      if (file.name === legacyName) {
+        hasLegacy = true;
+      }
     }
-    const existing = await checkRes.json();
-    existingSha = existing.sha;
+
+    if (hasLegacy) {
+      nextVersion = Math.max(maxVersion + 1, 2);
+    } else if (maxVersion > 0) {
+      nextVersion = maxVersion + 1;
+    }
   }
+
+  const versionedName = `${name}-v${nextVersion}`;
+  const filePath = `${memberId}/${week}/${versionedName}.py`;
 
   // --- Push to GitHub ---
   const content = Buffer.from(code, 'utf-8').toString('base64');
-  const commitMessage = existingSha
-    ? `Update ${name} by ${members[memberId].name}`
-    : `Add ${name} by ${members[memberId].name}`;
-
-  const putBody: Record<string, unknown> = {
-    message: commitMessage,
-    content,
-  };
-  if (existingSha) {
-    putBody.sha = existingSha;
-  }
+  const commitMessage = `Add ${versionedName} by ${members[memberId].name}`;
 
   const putRes = await fetch(
     `https://api.github.com/repos/${OWNER}/${REPO}/contents/${filePath}`,
@@ -170,7 +250,12 @@ export default async function handler(req: any, res: any) {
         'Content-Type': 'application/json',
         'User-Agent': 'Sootudy-Web',
       },
-      body: JSON.stringify(putBody),
+      body: JSON.stringify({
+        message: commitMessage,
+        content,
+        author,
+        committer: author,
+      }),
     },
   );
 
@@ -187,6 +272,6 @@ export default async function handler(req: any, res: any) {
     path: filePath,
     memberId,
     week,
-    name,
+    name: versionedName,
   });
 }
