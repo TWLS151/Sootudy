@@ -77,7 +77,7 @@ export function getProblemUrl(name: string, source: 'swea' | 'boj' | 'etc'): str
     return `https://www.acmicpc.net/problem/${num}`;
   }
   if (source === 'swea') {
-    return `https://swexpertacademy.com/main/code/problem/problemList.do?problemTitle=${num}`;
+    return `https://swexpertacademy.com/main/searchAll/search.do?category=&pageIndex=&keyword=${num}`;
   }
   return null;
 }
